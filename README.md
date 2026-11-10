@@ -31,3 +31,15 @@ React 19、TypeScript、Vite、React Router、React Flow、Lucide Icons。
 ## 部署
 
 推送到 `main` 分支后，GitHub Actions 会构建并发布到 GitHub Pages。
+
+
+## .NET API
+
+前端图片生成已接入 `backend/` 下的 .NET 洋葱架构 API。
+
+```powershell
+cd backend
+dotnet run --project src/Nova.Api
+```
+
+API 默认监听 `http://localhost:5070`，会调用本机 `C:\Users\82742\.agents\scripts\custom_imagegen.py`。如需调整路径，修改 `backend/src/Nova.Api/appsettings.json`。

@@ -495,3 +495,6 @@ input[type='checkbox'] { width: 28px; height: 15px; margin: 0; accent-color: var
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+.generation-error { grid-column: 1 / -1; padding: 14px 16px; color: #ffd1cf; border: 1px solid rgba(255,113,104,.32); border-radius: 10px; background: rgba(255,113,104,.09); font-size: 12px; }
+.canvas-error { max-width: 280px; color: #ffaaa4; font-size: 11px; line-height: 1.35; }

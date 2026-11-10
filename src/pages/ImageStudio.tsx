@@ -16,8 +16,11 @@ import {
 } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { artworks, assetUrl } from '../lib/assets'
+import { generateImage } from '../lib/api'
 
 const ratios = ['1:1', '16:9', '9:16', '4:3', '3:4']
+type GeneratedArtwork = { file: string; title: string; meta: string; category: string }
+
 const styles = [
   ['默认', 'floating-city.webp'],
   ['写实', 'wind-portrait.webp'],
@@ -37,6 +40,8 @@ export function ImageStudio() {
   const [progress, setProgress] = useState<number | null>(null)
   const [favorites, setFavorites] = useState<Set<string>>(new Set())
   const [filter, setFilter] = useState('全部')
+  const [generatedArtworks, setGeneratedArtworks] = useState<GeneratedArtwork[]>([])
+  const [generationError, setGenerationError] = useState('')
 
   useEffect(() => {
     if (progress === null) return
@@ -53,7 +58,8 @@ export function ImageStudio() {
     return () => URL.revokeObjectURL(reference.url)
   }, [reference])
 
-  const visibleArtworks = useMemo(() => filter === '收藏' ? artworks.filter((item) => favorites.has(item.file)) : artworks, [favorites, filter])
+  const allArtworks = useMemo(() => [...generatedArtworks, ...artworks], [generatedArtworks])
+  const visibleArtworks = useMemo(() => filter === '收藏' ? allArtworks.filter((item) => favorites.has(item.file)) : allArtworks, [allArtworks, favorites, filter])
   const toggleFavorite = (file: string) => setFavorites((current) => {
     const next = new Set(current)
     if (next.has(file)) {
@@ -63,6 +69,20 @@ export function ImageStudio() {
     }
     return next
   })
+  const handleGenerate = async () => {
+    if (!prompt.trim() || progress !== null) return
+    setGenerationError('')
+    setProgress(8)
+    try {
+      const response = await generateImage({ prompt, model: 'gpt-image-2', provider: 'local-gpt-image', ratio, count, style: style === '默认' ? undefined : style })
+      const createdAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      setGeneratedArtworks((current) => [...response.images.map((image, index) => ({ file: image.dataUrl, title: `AI 生成 ${index + 1}`, meta: `${createdAt} · ${ratio}`, category: style })), ...current])
+      setProgress(100)
+    } catch (error) {
+      setGenerationError(error instanceof Error ? error.message : '生成服务暂不可用，请确认后端已启动')
+      setProgress(null)
+    }
+  }
 
   return (
     <div className="image-studio page-enter">
@@ -82,7 +102,7 @@ export function ImageStudio() {
         </section>
         <section className="setting-section">
           <div className="setting-label"><strong>模型</strong></div>
-          <button className="model-select"><span className="model-thumb"><Sparkles size={18} /></span><span><strong>星流 Vision 4</strong><small>更强的美学理解与细节表现</small></span><ChevronDown size={17} /></button>
+          <button className="model-select"><span className="model-thumb"><Sparkles size={18} /></span><span><strong>GPT Image 2</strong><small>本地生成，支持后续扩展更多 Provider</small></span><ChevronDown size={17} /></button>
         </section>
         <section className="setting-section">
           <div className="setting-label"><strong>风格选择</strong><button>查看更多</button></div>
@@ -97,19 +117,19 @@ export function ImageStudio() {
           <button className="advanced-toggle" onClick={() => setAdvanced((value) => !value)}><span><SlidersHorizontal size={16} />高级设置</span><ChevronDown size={16} className={advanced ? 'rotate' : ''} /></button>
           {advanced ? <div className="advanced-body"><label><span>提示词引导 <small>7.5</small></span><input type="range" min="1" max="10" step="0.5" defaultValue="7.5" /></label><div className="toggle-row"><span>高清修复</span><input type="checkbox" defaultChecked /><span>面部优化</span><input type="checkbox" defaultChecked /></div></div> : null}
         </section>
-        <button className="primary-button generate-button" disabled={!prompt.trim() || progress !== null} onClick={() => setProgress(7)}><Sparkles size={18} />{progress === null ? '立即生成' : '正在生成'}<kbd>⌘ Enter</kbd></button>
+        <button className="primary-button generate-button" disabled={!prompt.trim() || progress !== null} onClick={handleGenerate}><Sparkles size={18} />{progress === null ? '立即生成' : '正在生成'}<kbd>⌘ Enter</kbd></button>
       </aside>
 
       <section className="results-panel">
         <div className="results-head">
-          <div><h2>创作结果</h2><div className="result-filters"><button className={filter === '全部' ? 'active' : ''} onClick={() => setFilter('全部')}>全部 <span>{artworks.length}</span></button><button className={filter === '收藏' ? 'active' : ''} onClick={() => setFilter('收藏')}>收藏 <span>{favorites.size}</span></button></div></div>
+          <div><h2>创作结果</h2><div className="result-filters"><button className={filter === '全部' ? 'active' : ''} onClick={() => setFilter('全部')}>全部 <span>{allArtworks.length}</span></button><button className={filter === '收藏' ? 'active' : ''} onClick={() => setFilter('收藏')}>收藏 <span>{favorites.size}</span></button></div></div>
           <div className="results-tools"><label className="search-control"><Search size={16} /><input placeholder="搜索提示词、风格或标签" /></label><button className="secondary-button">最新生成<ChevronDown size={15} /></button><button className="icon-button bordered" title="网格视图"><Grid2X2 size={17} /></button></div>
         </div>
-        <div className="results-grid">
+        <div className="results-grid">{generationError ? <div className="generation-error">{generationError}</div> : null}
           {visibleArtworks.map((item) => (
             <article className="result-card" key={item.file}>
-              <div className="result-media"><img src={assetUrl(item.file)} alt={item.title} /><div className="media-actions"><button className={favorites.has(item.file) ? 'active' : ''} onClick={() => toggleFavorite(item.file)} title="收藏"><Heart size={17} fill={favorites.has(item.file) ? 'currentColor' : 'none'} /></button><a href={assetUrl(item.file)} download title="下载"><Download size={17} /></a><button title="更多"><MoreHorizontal size={17} /></button></div></div>
-              <strong>{item.title}</strong><small><span>星流 Vision 4</span><span>{ratio}</span>{item.meta.split('·')[0]}</small>
+              <div className="result-media"><img src={(item.file.startsWith('data:') ? item.file : assetUrl(item.file))} alt={item.title} /><div className="media-actions"><button className={favorites.has(item.file) ? 'active' : ''} onClick={() => toggleFavorite(item.file)} title="收藏"><Heart size={17} fill={favorites.has(item.file) ? 'currentColor' : 'none'} /></button><a href={item.file.startsWith('data:') ? item.file : assetUrl(item.file)} download title="下载"><Download size={17} /></a><button title="更多"><MoreHorizontal size={17} /></button></div></div>
+              <strong>{item.title}</strong><small><span>{item.file.startsWith('data:') ? 'GPT Image 2' : '示例资产'}</span><span>{ratio}</span>{item.meta.split('·')[0]}</small>
             </article>
           ))}
           {visibleArtworks.length === 0 ? <div className="empty-state"><Heart size={28} /><strong>还没有收藏作品</strong><p>点亮作品右上角的爱心后，会在这里出现。</p></div> : null}

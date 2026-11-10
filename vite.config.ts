@@ -5,4 +5,9 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   base: '/nova-aigc-studio/',
   plugins: [react()],
+  server: {
+    proxy: {
+      '/api': 'http://localhost:5070',
+    },
+  },
 })

@@ -50,6 +50,7 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { Brand } from '../components/Brand'
 import { assetUrl } from '../lib/assets'
+import { generateImage, type GeneratedImage } from '../lib/api'
 
 type NodeKind = 'prompt' | 'model' | 'image' | 'output'
 type NovaNodeData = {
@@ -91,9 +92,9 @@ function NovaNodeCard({ data, selected }: NodeProps<NovaNode>) {
 const nodeTypes: NodeTypes = { nova: NovaNodeCard }
 const initialNodes: NovaNode[] = [
   { id: 'prompt-1', type: 'nova', position: { x: 80, y: 210 }, data: { kind: 'prompt', title: '提示词 Prompt', text: '未来的霓虹城市，雨夜，巨大的全息广告，飞行汽车穿梭在高楼之间，电影级画面，赛博朋克风格，细节丰富，光影对比强烈。' } },
-  { id: 'model-1', type: 'nova', position: { x: 400, y: 230 }, data: { kind: 'model', title: '模型 Model', model: '星流 Vision 4' } },
-  { id: 'image-1', type: 'nova', position: { x: 720, y: 80 }, data: { kind: 'image', title: '图像结果 01', image: assetUrl('neon-car.webp'), ratio: '16:9', model: '星流 Vision 4', seed: '824731', strength: 0.8 } },
-  { id: 'image-2', type: 'nova', position: { x: 720, y: 430 }, data: { kind: 'image', title: '图像结果 02', image: assetUrl('floating-city.webp'), ratio: '16:9', model: '星流 Vision 4', seed: '291046', strength: 0.8 } },
+  { id: 'model-1', type: 'nova', position: { x: 400, y: 230 }, data: { kind: 'model', title: '模型 Model', model: 'GPT Image 2' } },
+  { id: 'image-1', type: 'nova', position: { x: 720, y: 80 }, data: { kind: 'image', title: '图像结果 01', image: assetUrl('neon-car.webp'), ratio: '16:9', model: 'GPT Image 2', seed: '824731', strength: 0.8 } },
+  { id: 'image-2', type: 'nova', position: { x: 720, y: 430 }, data: { kind: 'image', title: '图像结果 02', image: assetUrl('floating-city.webp'), ratio: '16:9', model: 'GPT Image 2', seed: '291046', strength: 0.8 } },
   { id: 'output-1', type: 'nova', position: { x: 1080, y: 270 }, data: { kind: 'output', title: '超像输出' } },
 ]
 const initialEdges: Edge[] = [
@@ -127,6 +128,7 @@ function CanvasWorkspace() {
   const [canvasMode, setCanvasMode] = useState<'select' | 'pan'>('select')
   const [canvasPrompt, setCanvasPrompt] = useState('雨夜的未来城市，霓虹倒映在街道上，飞行汽车穿过高楼之间')
   const [generating, setGenerating] = useState(false)
+  const [canvasError, setCanvasError] = useState('')
   const [history, setHistory] = useState([{ nodes: initialNodes, edges: initialEdges }])
   const [historyIndex, setHistoryIndex] = useState(0)
   const nodeCounter = useRef(6)
@@ -148,11 +150,26 @@ function CanvasWorkspace() {
   const addNode = (kind: NodeKind) => {
     const id = `${kind}-${nodeCounter.current++}`
     const fallbackImage = kind === 'image' ? assetUrl(nodeCounter.current % 2 ? 'deep-whale.webp' : 'red-maple.webp') : undefined
-    const nextNodes: NovaNode[] = [...nodes, { id, type: 'nova', position: { x: 470 + nodeCounter.current * 18, y: 170 + nodeCounter.current * 14 }, data: { kind, title: kind === 'prompt' ? '新提示词' : kind === 'model' ? '模型 Model' : kind === 'image' ? '图像结果' : '后处理输出', text: '描述你想要生成的画面内容...', model: '星流 Vision 4', image: fallbackImage, ratio: '16:9', seed: String(100000 + nodeCounter.current * 7919), strength: 0.7 } }]
+    const nextNodes: NovaNode[] = [...nodes, { id, type: 'nova', position: { x: 470 + nodeCounter.current * 18, y: 170 + nodeCounter.current * 14 }, data: { kind, title: kind === 'prompt' ? '新提示词' : kind === 'model' ? '模型 Model' : kind === 'image' ? '图像结果' : '后处理输出', text: '描述你想要生成的画面内容...', model: 'GPT Image 2', image: fallbackImage, ratio: '16:9', seed: String(100000 + nodeCounter.current * 7919), strength: 0.7 } }]
     commitState(nextNodes, edges)
     setSelectedId(id)
     setQuickMenu(false)
   }
+  const addGeneratedImages = useCallback((images: GeneratedImage[]) => {
+    const generatedNodes = images.map((image, index) => {
+      const id = `image-${nodeCounter.current++}`
+      return {
+        id,
+        type: 'nova' as const,
+        position: { x: 700 + index * 280, y: 130 + (index % 2) * 300 },
+        data: { kind: 'image' as const, title: `生成结果 ${index + 1}`, image: image.dataUrl, ratio: '16:9', model: image.model, seed: image.fileName, strength: 0.8 },
+      }
+    })
+    if (!generatedNodes.length) return
+    commitState([...nodes, ...generatedNodes], edges)
+    setSelectedId(generatedNodes[0].id)
+    setQuickMenu(false)
+  }, [commitState, edges, nodes])
   const updateSelected = (patch: Partial<NovaNodeData>) => setNodes((current) => current.map((node) => node.id === selectedId ? { ...node, data: { ...node.data, ...patch } } : node))
   const removeSelected = useCallback(() => {
     if (!selectedId) return
@@ -215,13 +232,19 @@ function CanvasWorkspace() {
     anchor.click()
     URL.revokeObjectURL(url)
   }
-  const runCanvasGeneration = () => {
+  const runCanvasGeneration = async () => {
     if (!canvasPrompt.trim() || generating) return
     setGenerating(true)
-    window.setTimeout(() => {
+    setCanvasError('')
+    try {
+      const response = await generateImage({ prompt: canvasPrompt, model: 'gpt-image-2', provider: 'local-gpt-image', ratio: '16:9', count: 2 })
+      if (response.images.length) addGeneratedImages(response.images)
+    } catch (error) {
+      setCanvasError(error instanceof Error ? error.message : '生成服务暂不可用')
       addNode('image')
+    } finally {
       setGenerating(false)
-    }, 900)
+    }
   }
 
   return (
@@ -267,7 +290,7 @@ function CanvasWorkspace() {
         <section className="canvas-composer">
           <div className="canvas-composer-tools"><button><Plus size={13} />参考</button><button>标记</button><button>特效</button><button>角色库</button><button>运镜</button></div>
           <label><AtSign size={18} /><textarea value={canvasPrompt} onChange={(event) => setCanvasPrompt(event.target.value)} placeholder="描述你想要生成的画面内容，@ 引用素材" /></label>
-          <div className="canvas-composer-foot"><button className="composer-add" title="添加素材"><Plus size={18} /></button><button>星流 Vision 4<ChevronDown size={14} /></button><button>16:9 · 1 张<ChevronDown size={14} /></button><button className="canvas-generate" onClick={runCanvasGeneration} disabled={generating || !canvasPrompt.trim()}>{generating ? <span className="spinner" /> : <Sparkles size={15} />}{generating ? '生成中' : '生成'}</button></div>
+          <div className="canvas-composer-foot"><span className="canvas-error">{canvasError}</span><button className="composer-add" title="添加素材"><Plus size={18} /></button><button>GPT Image 2<ChevronDown size={14} /></button><button>16:9 · 1 张<ChevronDown size={14} /></button><button className="canvas-generate" onClick={runCanvasGeneration} disabled={generating || !canvasPrompt.trim()}>{generating ? <span className="spinner" /> : <Sparkles size={15} />}{generating ? '生成中' : '生成'}</button></div>
         </section>
       </main>
 
@@ -279,7 +302,7 @@ function CanvasWorkspace() {
           <div className="inspector-form">
             <label><span>节点名称</span><input value={selectedNode.data.title} onChange={(event) => updateSelected({ title: event.target.value })} /></label>
             {selectedNode.data.kind === 'prompt' ? <label><span>提示词</span><textarea value={selectedNode.data.text || ''} onChange={(event) => updateSelected({ text: event.target.value })} /></label> : null}
-            {selectedNode.data.kind === 'image' ? <><label><span>使用模型</span><button>星流 Vision 4<ChevronDown size={15} /></button></label><label><span>生成比例</span><button>16:9（1536 × 864）<ChevronDown size={15} /></button></label><label><span>随机种子</span><input value={selectedNode.data.seed || ''} onChange={(event) => updateSelected({ seed: event.target.value })} /></label><label><span>提示词强度 <b>{selectedNode.data.strength}</b></span><input type="range" min="0" max="1" step="0.1" value={selectedNode.data.strength || 0} onChange={(event) => updateSelected({ strength: Number(event.target.value) })} /></label><button className="primary-button inspector-primary"><RefreshCw size={16} />重新生成</button></> : null}
+            {selectedNode.data.kind === 'image' ? <><label><span>使用模型</span><button>GPT Image 2<ChevronDown size={15} /></button></label><label><span>生成比例</span><button>16:9（1536 × 864）<ChevronDown size={15} /></button></label><label><span>随机种子</span><input value={selectedNode.data.seed || ''} onChange={(event) => updateSelected({ seed: event.target.value })} /></label><label><span>提示词强度 <b>{selectedNode.data.strength}</b></span><input type="range" min="0" max="1" step="0.1" value={selectedNode.data.strength || 0} onChange={(event) => updateSelected({ strength: Number(event.target.value) })} /></label><button className="primary-button inspector-primary"><RefreshCw size={16} />重新生成</button></> : null}
             <button className="danger-button" onClick={removeSelected}><Trash2 size={16} />删除节点</button>
           </div>
         </aside>
