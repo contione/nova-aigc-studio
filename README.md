@@ -1,45 +1,53 @@
 # NOVA 星流创作台
 
-一个面向视觉创作者的 AIGC 前端概念项目，包含图片生成工作台与节点式无限画布。当前版本使用本地模拟数据，适合继续接入真实的图片生成 API。
+保留原有深色创作 UI 的图片工作室、作品库与节点式无限画布。前端使用 React，图片生成由本地 .NET 洋葱架构 API 调用已配置的 custom-imagegen 包装脚本。
 
-## 功能
+## 已实现功能
 
-- 首页快速创作、最近项目和灵感筛选
-- 文生图 / 图生图参数面板、生成进度、结果收藏与下载
-- 可拖拽、缩放、连线和添加节点的无限画布
-- 节点属性编辑、删除、工作流 JSON 导出与分享链接复制
-- 桌面、平板和移动端响应式布局
+- 图片工作室：文生图、参考图编辑、单张生成、比例/风格/提示词增强、真实等待/取消、历史、搜索、排序、收藏、预览、下载、删除与再次引用。
+- 作品库：图片上传、图片/收藏/画布筛选、搜索、网格/列表切换、详情与下载；生成结果和画布上传素材自动进入作品库。
+- 首页：真实最近画布、新建/打开/重命名/删除、图片灵感筛选与全局搜索。
+- 画布编辑：拖拽、平移、缩放、小地图、框选/多选、连线、节点缩放、复制、删除、锁定、属性编辑和撤销/重做。
+- 画布节点：提示词、模型、图像、输出、文本、画框、备注、条件开关；画框编组/解组保留内容。
+- 工作流：运行节点读取连线的上游提示词和图片；关闭的条件开关阻断该路输入；结果插入画布并建立来源连线。
+- 画布管理：节点列表、名称/内容/提示词搜索、类型筛选和定位、多画布保存与恢复、JSON 导入/导出、上传/拖入图片、作品库插入与参考图复用。
 
-## 本地运行
+## 运行
 
-```bash
-npm install
-npm run dev
-```
+前端：
 
-构建与检查：
+~~~powershell
+rtk npm install
+rtk npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
+~~~
 
-```bash
-npm run lint
-npm run build
-```
+后端（另开终端）：
 
-## 技术栈
+~~~powershell
+rtk dotnet run --project backend/src/Nova.Api
+~~~
 
-React 19、TypeScript、Vite、React Router、React Flow、Lucide Icons。
+浏览器访问 http://127.0.0.1:5173/nova-aigc-studio/ 。API 默认监听 http://localhost:5070 。后端必须继承包装脚本所使用的凭据环境；修改 Windows 用户环境变量后需要重启后端进程。不要把密钥放入前端或提交到仓库。
 
-## 部署
+后端配置见 backend/src/Nova.Api/appsettings.json；接口与凭据说明见 backend/README.md。
 
-推送到 `main` 分支后，GitHub Actions 会构建并发布到 GitHub Pages。
+## 数据与能力边界
 
+- 图片和画布存储在当前浏览器的 IndexedDB，不是云同步；清除站点数据前请导出画布备份。通知在本机同源标签页间同步，不代表实时多人协作。
+- “复制链接”用于同一浏览器工作区；跨设备分享使用 JSON 导出/导入。JSON 内嵌图片，可能较大。
+- 当前提供方是 local-gpt-image，模型为 gpt-image-2。API 暴露能力列表，其他提供方可通过 Nova.Application 的 IImageGenerationService 扩展。
+- 比例会转换成脚本的 --size 参数；最终尺寸仍取决于所配置提供方的实际响应，不把请求尺寸冒充实际图片尺寸。
+- 提示词增强、特效提示、镜头提示是提示词辅助；输出节点的 1×/2×/4× 是本地 PNG 重采样，不宣称 AI 超分、视频生成或面部修复。
+- 请求没有实时进度事件，界面仅显示等待状态。取消会中断 HTTP 和本地关联进程；已送达外部服务的请求不保证停止计费。
+- GitHub Pages 仅部署静态前端，不部署 .NET API。远程部署还需要配置可访问的 API 地址和相应 CORS 来源。
 
-## .NET API
+## 检查
 
-前端图片生成已接入 `backend/` 下的 .NET 洋葱架构 API。
+~~~powershell
+rtk npm run build
+rtk npm run lint
+rtk dotnet build backend/src/Nova.Api -m:1
+rtk git diff --check
+~~~
 
-```powershell
-cd backend
-dotnet run --project src/Nova.Api
-```
-
-API 默认监听 `http://localhost:5070`，会调用本机 `C:\Users\82742\.agents\scripts\custom_imagegen.py`。如需调整路径，修改 `backend/src/Nova.Api/appsettings.json`。
+当前没有额外安装测试框架。回归时应覆盖：延迟生成/取消/失败、参考图传递、作品查询与收藏同步、刷新恢复、导入撤销、节点拖拽缩放、编组和连线、手机布局。测试桩验证不能替代真实提供方的生成效果验证。

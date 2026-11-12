@@ -8,7 +8,8 @@ public sealed record GenerateImageCommand(
     string Provider,
     string Ratio,
     int Count,
-    string? Style);
+    string? Style,
+    ReferenceImage? ReferenceImage = null);
 
 public interface IImageGenerationService
 {
